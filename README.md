@@ -14,7 +14,7 @@
 
 **Para reconectar la ruta de flutter:** export PATH="$PATH:`pwd`/flutter/bin"
 
-**Para ejecutar el proyecto:** flutter create . --platforms=web --project-name=inventario_motoline
+**Para ejecutar el proyecto:** flutter run -d web-server --web-port 8080
 
 **Para guardar en git hub** 
 git add .
