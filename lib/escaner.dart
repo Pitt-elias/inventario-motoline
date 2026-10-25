@@ -97,6 +97,11 @@ class _PantallaEscanerOfflineState extends State<PantallaEscanerOffline> {
     });
 
     try {
+      
+      // 🛡️ Nos aseguramos de inicializar Hive por seguridad antes de abrir la caja
+      await Hive.initFlutter();
+
+
       // Abrimos la "caja" de Hive (tabla) donde guardamos los registros localmente en el celular
       var cajaRepuestos = await Hive.openBox('facturas_locales');
 
