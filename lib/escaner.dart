@@ -13,9 +13,6 @@ class PantallaEscanerOffline extends StatefulWidget {
   @override
   State<PantallaEscanerOffline> createState() => _PantallaEscanerOfflineState(); // Método obligatorio que vincula la estructura visual con la clase de estado y lógica
 }
-git add .
-git commit -m "feat: agrego modulo offline-first con hive y generacion de excel local"
-git push
 class _PantallaEscanerOfflineState extends State<PantallaEscanerOffline> {
   bool _estaGuardando = false;                                                // Variable de control (bandera): si es true, deshabilita el botón para evitar guardados duplicados
 

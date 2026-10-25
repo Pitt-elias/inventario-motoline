@@ -1,0 +1,41 @@
+name: Build Flutter APK
+
+on:
+  push:
+    branches: [ main ] # Se ejecutará automáticamente cada vez que guardes cambios en la rama main
+  workflow_dispatch:   # Te permite un botón manual para compilar cuando quieras desde GitHub
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+      # 1. Descarga el código de tu repositorio
+      - uses: actions/checkout@v4
+
+      # 2. Configura el entorno de Java necesario para Android
+      - uses: actions/setup-java@v4
+        with:
+          distribution: 'zulu'
+          java-version: '17'
+
+      # 3. Configura Flutter en la nube
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.x'
+          channel: 'stable'
+          cache: true
+
+      # 4. Instala las dependencias del proyecto (hive, excel, etc.)
+      - name: Install Dependencies
+        run: flutter pub get
+
+      # 5. Compila la aplicación en modo APK Release (optimizada para producción)
+      - name: Build APK
+        run: flutter build apk --release
+
+      # 6. Guarda la APK generada para que puedas descargarla
+      - uses: actions/upload-artifact@v4
+        with:
+          name: app-release-apk
+          path: build/app/outputs/flutter-apk/app-release.apk

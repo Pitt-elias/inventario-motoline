@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'escaner.dart';
 
 // -----------------------------------------------------------------------------
 // PUNTO DE ENTRADA DE LA APLICACIÓN
@@ -24,7 +25,8 @@ class InventarioApp extends StatelessWidget{
             brightness: Brightness.light,
           ),
         ),
-        home: const PantallaPrincipalInventario(), // La pantalla que se muestra al abrir la app
+          home: const PantallaEscanerOffline(),
+        //home: const PantallaPrincipalInventario(), // La pantalla que se muestra al abrir la app
       );
     }
 } 
