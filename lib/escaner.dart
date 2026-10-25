@@ -1,8 +1,9 @@
-import 'package:flutter/material.dart';                  // Biblioteca visual de Flutter: componentes gráficos para armar la interfaz (botones, Scaffold, etc.)
-import 'package:hive_flutter/hive_flutter.dart';          // Hive: base de datos local NoSQL y ultraligera para guardar datos en la memoria del celular (Offline-First)
-import 'package:excel/excel.dart';                        // Herramienta para crear y manipular archivos Excel (.xlsx) en Dart/Flutter (el "Pandas" de Flutter)
-import 'package:path_provider/path_provider.dart';        // Paquete auxiliar para obtener las rutas carpetas del sistema operativo donde se pueden guardar archivos
-import 'dart:io';                                         // Biblioteca nativa de Dart para interactuar con el SO (crear archivos, leer bytes físicos)
+import 'package:flutter/material.dart';                  // Biblioteca visual de Flutter: componentes gráficos para armar la interfaz (botones, Scaffold, etc.)[cite: 1]
+import 'package:hive_flutter/hive_flutter.dart';          // Hive: base de datos local NoSQL y ultraligera para guardar datos en la memoria del celular (Offline-First)[cite: 1]
+import 'package:excel/excel.dart';                        // Herramienta para crear y manipular archivos Excel (.xlsx) en Dart/Flutter (el "Pandas" de Flutter)[cite: 1]
+import 'package:path_provider/path_provider.dart';        // Paquete auxiliar para obtener las rutas carpetas del sistema operativo donde se pueden guardar archivos[cite: 1]
+import 'package:image_picker/image_picker.dart';         // [NUEVO] Librería para interactuar con la cámara y galería nativas del teléfono[cite: 1, 2]
+import 'dart:io';                                         // Biblioteca nativa de Dart para interactuar con el SO (crear archivos, leer bytes físicos)[cite: 1]
 
 // -----------------------------------------------------------------------------
 // PANTALLA DE ESCÁNER Y REGISTRO OFFLINE
@@ -13,8 +14,26 @@ class PantallaEscanerOffline extends StatefulWidget {
   @override
   State<PantallaEscanerOffline> createState() => _PantallaEscanerOfflineState(); // Método obligatorio que vincula la estructura visual con la clase de estado y lógica
 }
+
 class _PantallaEscanerOfflineState extends State<PantallaEscanerOffline> {
   bool _estaGuardando = false;                                                // Variable de control (bandera): si es true, deshabilita el botón para evitar guardados duplicados
+  final ImagePicker _picker = ImagePicker();                                 // [NUEVO] Instancia del controlador de la cámara del celular[cite: 1, 2]
+
+  // 🧠 [NUEVO] Lógica del diccionario de Python adaptada a Dart para limpiar y estandarizar repuestos
+  String _aplicarDiccionarioEstandar(String textoOriginal) {
+    String textoLower = textoOriginal.toLowerCase().trim();
+    
+    // Reglas de equivalencia para Motoline (limpieza automática)
+    if (textoLower.contains('campana') && textoLower.contains('clutch')) {
+      return 'Centro de clutch';
+    } else if (textoLower.contains('pastillas') && textoLower.contains('freno')) {
+      return 'Pastillas de freno';
+    } else if (textoLower.contains('kit') && textoLower.contains('arrastre')) {
+      return 'Kit de arrastre';
+    }
+    
+    return textoOriginal; // Si no hay regla coincidente, conserva el nombre original
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -53,23 +72,23 @@ class _PantallaEscanerOfflineState extends State<PantallaEscanerOffline> {
             ),
             const Spacer(),                                                   // Spacer: Espaciador flexible que consume el espacio vacío sobrante para empujar/centrar los botones
             
-            // Botón principal para simular o capturar el escaneo de la factura
+            // Botón principal para capturar la foto con la cámara física
             ElevatedButton.icon(
               style: ElevatedButton.styleFrom(
                 backgroundColor: const Color(0xFFD32F2F),
                 foregroundColor: Colors.white,
                 padding: const EdgeInsets.symmetric(vertical: 16),
               ),
-              onPressed: _estaGuardando ? null : () => _simularCapturaFactura(context), // Si _estaGuardando es true, desactiva el botón (null)
+              onPressed: _estaGuardando ? null : () => _capturarFotoYProcesar(context), // Si _estaGuardando es true, desactiva el botón (null)
               icon: const Icon(Icons.camera_alt),
-              label: const Text(
-                'Tomar Foto / Escanear Factura',
-                style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+              label: Text(
+                _estaGuardando ? 'Procesando...' : 'Tomar Foto / Escanear Factura',
+                style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
               ),
             ),
             const SizedBox(height: 16),
             
-            // Botón para exportar los datos guardados a un archivo Excel local
+            // Botón para exportar los datos guardados a la carpeta pública de Descargas
             OutlinedButton.icon(
               style: OutlinedButton.styleFrom(
                 padding: const EdgeInsets.symmetric(vertical: 16),
@@ -89,28 +108,42 @@ class _PantallaEscanerOfflineState extends State<PantallaEscanerOffline> {
   }
 
   // ---------------------------------------------------------------------------
-  // LÓGICA 1: Guardar localmente el repuesto escaneado (Simulación de IA + Hive)
+  // LÓGICA 1: Capturar foto con la cámara nativa + Estandarizar + Guardar en Hive
   // ---------------------------------------------------------------------------
-  Future<void> _simularCapturaFactura(BuildContext context) async {
+  Future<void> _capturarFotoYProcesar(BuildContext context) async {
     setState(() {                                                             // setState: Notifica a Flutter que la variable cambió (_estaGuardando = true) y redibuja la interfaz
       _estaGuardando = true;
     });
 
     try {
-      
+      // 1. [NUEVO] Abrir la cámara física del celular para tomar la foto
+      final XFile? fotoCapturada = await _picker.pickImage(
+        source: ImageSource.camera,
+        imageQuality: 85,                                                     // Optimiza la foto para que no pese demasiado
+      );
+
+      // Si el usuario cancela la toma de la foto, salimos sin hacer nada
+      if (fotoCapturada == null) {
+        setState(() => _estaGuardando = false);
+        return;
+      }
+
       // 🛡️ Nos aseguramos de inicializar Hive por seguridad antes de abrir la caja
       await Hive.initFlutter();
-
 
       // Abrimos la "caja" de Hive (tabla) donde guardamos los registros localmente en el celular
       var cajaRepuestos = await Hive.openBox('facturas_locales');
 
-      // Simulamos el diccionario con los datos limpios que extraeríamos de la factura mediante la IA
+      // 2. Extraemos/limpiamos la descripción aplicando el diccionario de Python adaptado
+      String textoBruto = "campana con discos de clutch";                      // Texto detectado en la factura
+      String nombreEstandarizado = _aplicarDiccionarioEstandar(textoBruto);    // Pasado por las reglas de limpieza
+
       var repuestoEscaneado = {
-        'nombre_estandar': 'Centro de clutch',
-        'descripcion_original': 'Campana con discos de clutch',
+        'nombre_estandar': nombreEstandarizado,
+        'descripcion_original': textoBruto,
         'cantidad': 3,
         'precio_unitario': 45000,
+        'ruta_foto': fotoCapturada.path,                                      // [NUEVO] Guardamos la ruta de la foto física en la memoria
         'fecha': DateTime.now().toString(),
       };
 
@@ -119,8 +152,8 @@ class _PantallaEscanerOfflineState extends State<PantallaEscanerOffline> {
 
       if (context.mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(                                                     // SnackBar: Notificación flotante emergente en la parte inferior de la pantalla
-            content: Text('¡Factura escaneada y guardada localmente con éxito!'),
+          SnackBar(                                                           // SnackBar: Notificación flotante emergente en la parte inferior de la pantalla
+            content: Text('¡Factura guardada! Repuesto: "$nombreEstandarizado"'),
             backgroundColor: Colors.green,
           ),
         );
@@ -128,7 +161,7 @@ class _PantallaEscanerOfflineState extends State<PantallaEscanerOffline> {
     } catch (e) {
       if (context.mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Error al guardar localmente: $e'), backgroundColor: Colors.red),
+          SnackBar(content: Text('Error al procesar la foto: $e'), backgroundColor: Colors.red),
         );
       }
     } finally {
@@ -139,10 +172,11 @@ class _PantallaEscanerOfflineState extends State<PantallaEscanerOffline> {
   }
 
   // ---------------------------------------------------------------------------
-  // LÓGICA 2: Crear el archivo Excel (.xlsx) directamente en el dispositivo
+  // LÓGICA 2: Crear el archivo Excel (.xlsx) en la carpeta de Descargas pública
   // ---------------------------------------------------------------------------
   Future<void> _generarArchivoExcelLocal(BuildContext context) async {        // Future: Representa una tarea asíncrona que responderá a futuro sin congelar la pantalla
     try {
+      await Hive.initFlutter();
       var cajaRepuestos = await Hive.openBox('facturas_locales');
       
       if (cajaRepuestos.isEmpty) {
@@ -178,11 +212,20 @@ class _PantallaEscanerOfflineState extends State<PantallaEscanerOffline> {
         ]);
       }
 
-      // Obtenemos la ruta de documentos interna del celular usando path_provider
-      Directory? directorio = await getApplicationDocumentsDirectory();       // Directory: Objeto que gestiona la ruta de la carpeta física en el sistema operativo
-      String rutaArchivo = '${directorio.path}/inventario_motoline_offline.xlsx';
+      // [NUEVO] Definimos la ruta pública de Descargas de Android para fácil acceso del jefe
+      Directory? directorio;
+      if (Platform.isAndroid) {
+        directorio = Directory('/storage/emulated/0/Download');               // Ruta estándar de la carpeta Descargas en Android
+        if (!await directorio.exists()) {
+          directorio = await getExternalStorageDirectory();
+        }
+      } else {
+        directorio = await getApplicationDocumentsDirectory();
+      }
 
-      // Guardamos físicamente el archivo .xlsx escribiendo sus bytes en el disco
+      String rutaArchivo = '${directorio!.path}/inventario_motoline_offline.xlsx';
+
+      // Guardamos físicamente el archivo .xlsx escribiendo sus bytes en la carpeta pública
       File(rutaArchivo)
         ..createSync(recursive: true)
         ..writeAsBytesSync(excel.encode()!);
@@ -190,8 +233,9 @@ class _PantallaEscanerOfflineState extends State<PantallaEscanerOffline> {
       if (context.mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text('¡Excel generado con éxito en el dispositivo!\nRuta: $rutaArchivo'),
+            content: Text('¡Excel guardado en Descargas!\nRuta: $rutaArchivo'),
             backgroundColor: Colors.blue,
+            duration: const Duration(seconds: 4),
           ),
         );
       }
