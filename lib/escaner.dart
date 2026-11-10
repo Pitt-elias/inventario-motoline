@@ -11,6 +11,26 @@ import 'package:shared_preferences/shared_preferences.dart'; // Para almacenar l
 // URL por defecto en caso de que no se haya escaneado ningún QR todavía.
 String urlServidorDinamica = 'http://192.168.1.50:8000/procesar-factura/'; 
 
+void main() {
+  runApp(const MyApp());
+}
+
+class MyApp extends StatelessWidget {
+  const MyApp({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    return MaterialApp(
+      title: 'Motoline Escáner',
+      theme: ThemeData(
+        primarySwatch: Colors.blue,
+      ),
+      home: const PantallaEscanerOffline(),
+      debugShowCheckedModeBanner: false,
+    );
+  }
+}
+
 class PantallaEscanerOffline extends StatefulWidget {
   const PantallaEscanerOffline({super.key});
 
@@ -114,7 +134,7 @@ class _PantallaEscanerOfflineState extends State<PantallaEscanerOffline> {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text('❌ Error de conexión con $urlServidorDinamica: $e'),
+            content: Text('❌ Error de conexión con $urlServidorDinamica:$e'),
             backgroundColor: Colors.red,
             duration: const Duration(seconds: 5),
           ),
@@ -254,10 +274,34 @@ class _PantallaEscanerOfflineState extends State<PantallaEscanerOffline> {
 }
 
 // -----------------------------------------------------------------------------
-// PANTALLA AUXILIAR DE ESCANEO DE CÓDIGO QR
+// PANTALLA AUXILIAR DE ESCANEO DE CÓDIGO QR (Con Controlador Explícito)
 // -----------------------------------------------------------------------------
-class PantallaVistaQR extends StatelessWidget {
+class PantallaVistaQR extends StatefulWidget {
   const PantallaVistaQR({super.key});
+
+  @override
+  State<PantallaVistaQR> createState() => _PantallaVistaQRState();
+}
+
+class _PantallaVistaQRState extends State<PantallaVistaQR> {
+  late MobileScannerController controller;
+  bool _encontroQR = false;
+
+  @override
+  void initState() {
+    super.initState();
+    controller = MobileScannerController(
+      detectionSpeed: DetectionSpeed.normal,
+      facing: CameraFacing.back,
+      torchEnabled: false,
+    );
+  }
+
+  @override
+  void dispose() {
+    controller.dispose();
+    super.dispose();
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -266,20 +310,51 @@ class PantallaVistaQR extends StatelessWidget {
         title: const Text('Escanee el QR del Servidor'),
         backgroundColor: Colors.black,
         foregroundColor: Colors.white,
+        actions: [
+          ValueListenableBuilder<TorchState>(
+            valueListenable: controller.torchState,
+            builder: (context, state, child) {
+              return IconButton(
+                icon: Icon(
+                  state == TorchState.on ? Icons.flash_on : Icons.flash_off,
+                  color: state == TorchState.on ? Colors.yellow : Colors.white,
+                ),
+                onPressed: () => controller.toggleTorch(),
+              );
+            },
+          ),
+          IconButton(
+            icon: const Icon(Icons.camera_front),
+            onPressed: () => controller.switchCamera(),
+          ),
+        ],
       ),
-      body: MobileScanner(
-        onDetect: (capture) {
-          final List<Barcode> barcodes = capture.barcodes;
-          for (final barcode in barcodes) {
-            if (barcode.rawValue != null) {
-              final String codigoLeido = barcode.rawValue!;
-              // Retornamos la URL detectada a la pantalla anterior y cerramos esta vista
-              Navigator.pop(context, codigoLeido);
-              break; // Salimos del ciclo al encontrar el primer QR válido
-            }
-          }
-        },
-      ),
-    );
-  }
-}
+      body: Stack(
+        children: [
+          MobileScanner(
+            controller: controller,
+            onDetect: (capture) {
+              if (_encontroQR) return;
+              final List<Barcode> barcodes = capture.barcodes;
+              for (final barcode in barcodes) {
+                if (barcode.rawValue != null) {
+                  _encontroQR = true;
+                  final String codigoLeido = barcode.rawValue!;
+                  controller.stop();
+                  Navigator.pop(context, codigoLeido);
+                  break;
+                }
+              }
+            },
+          ),
+          Center(
+            child: Container(
+              width: 260,
+              height: 260,
+              decoration: BoxDecoration(
+                border: Border.all(color: Colors.greenAccent, width: 3),
+                borderRadius: BorderRadius.circular(16),
+              ),
+            ),
+          ),
+          const Positioned
