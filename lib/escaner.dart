@@ -1,92 +1,97 @@
 import 'package:flutter/material.dart';          // Componentes visuales y de diseño de Flutter.
-import 'package:image_picker/image_picker.dart';    // Manejo del hardware para tomar fotos con la cámara o elegirlas de la galería.
-import 'package:http/http.dart' as http;            // Cliente HTTP oficial para enviar las peticiones y archivos al servidor de Python.
-import 'dart:convert';                              // Decodificador de JSON para interpretar las respuestas del servidor.
-// import 'package:shared_preferences/shared_preferences.dart'; // (Opcional recomendado) Para guardar la URL del QR de forma permanente en el celular.
+import 'package:image_picker/image_picker.dart';    // Manejo de la cámara y galería para las facturas.
+import 'package:http/http.dart' as http;            // Cliente HTTP para enviar las fotos a Python.
+import 'dart:convert';                              // Traductor de formato JSON.
+import 'package:mobile_scanner/mobile_scanner.dart'; // Librería para escanear el código QR del servidor.
+import 'package:shared_preferences/shared_preferences.dart'; // Para almacenar la URL de forma persistente en el celular.
 
 // -----------------------------------------------------------------------------
 // CONFIGURACIÓN DE CONEXIÓN DINÁMICA
 // -----------------------------------------------------------------------------
-// Variable global o local que almacena la URL del servidor obtenida mediante el código QR.
-// Si no se ha escaneado nada, podemos dejar una URL de respaldo por defecto.
+// URL por defecto en caso de que no se haya escaneado ningún QR todavía.
 String urlServidorDinamica = 'http://192.168.1.50:8000/procesar-factura/'; 
-
 
 class PantallaEscanerOffline extends StatefulWidget {
   const PantallaEscanerOffline({super.key});
 
   @override
   State<PantallaEscanerOffline> createState() => _PantallaEscanerOfflineState();  
-  // createState conecta nuestro StatefulWidget dinámico con su clase de estado _PantallaEscanerOfflineState, 
-  // que es donde ocurren los cambios visuales y la lógica.
 }
 
 class _PantallaEscanerOfflineState extends State<PantallaEscanerOffline> {
-  bool _estaEnviando = false;   // Variable booleana (true/false) para saber si la app está ocupada enviando una foto (bloquea botones para evitar doble clic).
-  final ImagePicker _picker = ImagePicker(); // Instanciamos la clase ImagePicker para poder usar la cámara y galería del celular.
+  bool _estaEnviando = false;   // Bloquea los botones mientras se sube una foto.
+  final ImagePicker _picker = ImagePicker(); // Instancia para capturar la factura.
+
+  @override
+  void initState() {
+    super.initState();
+    _cargarUrlGuardada(); // Al iniciar la app, recuperamos la última IP guardada si existe.
+  }
+
+  // Carga la URL almacenada previamente en la memoria interna del celular
+  Future<void> _cargarUrlGuardada() async {
+    final prefs = await SharedPreferences.getInstance();
+    final urlGuardada = prefs.getString('url_servidor_motoline');
+    if (urlGuardada != null && urlGuardada.isNotEmpty) {
+      setState(() {
+        urlServidorDinamica = urlGuardada;
+      });
+    }
+  }
 
   // ---------------------------------------------------------------------------
-  // LÓGICA DE CAPTURA Y ENVÍO POR BYTES (Compatible con Web y Móvil)
+  // LÓGICA DE CAPTURA Y ENVÍO DE LA FACTURA
   // ---------------------------------------------------------------------------
   Future<void> _capturarYEnviarFactura(ImageSource origen) async {
-    // Actualizamos el estado visual para reflejar que estamos enviando una foto.
     setState(() {
       _estaEnviando = true;
     });
 
     try {
-      // 1. Abrimos la cámara o galería para seleccionar o tomar la foto de la factura.
       final XFile? fotoCapturada = await _picker.pickImage(
         source: origen,
-        imageQuality: 85, // Comprimimos ligeramente la calidad (85%) para que viaje más rápido por la red Wi-Fi.
+        imageQuality: 85, // Compresión para agilizar la red local Wi-Fi.
       );
 
-      // Si el usuario cancela la toma de foto, detenemos el proceso y reactivamos los botones.
       if (fotoCapturada == null) {
         setState(() => _estaEnviando = false);
         return;
       }
 
-      // Mostramos un aviso flotante (SnackBar) indicando que la subida ha comenzado.
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
-            content: Text('Subiendo foto al servidor de procesamiento...'),
+            content: Text('Subiendo foto al servidor del taller...'),
             duration: Duration(seconds: 2),
           ),
         );
       }
 
-      // 2. Leemos la imagen cruda como una secuencia de Bytes en la memoria RAM (evita problemas de rutas en Android/iOS/Web).
       var bytesImagen = await fotoCapturada.readAsBytes();
       var nombreArchivo = fotoCapturada.name;
 
-      // 3. Preparamos una petición HTTP tipo Multipart (necesaria cuando enviamos archivos pesados como fotos).
+      // Petición HTTP Multipart enviada a la URL dinámica configurada
       var request = http.MultipartRequest(
         'POST',
-        Uri.parse(urlServidorDinamica), // Apuntamos a la URL dinámica configurada (la obtenida por el QR).
+        Uri.parse(urlServidorDinamica),
       );
 
-      // Adjuntamos los bytes de la imagen dentro de la petición simulando un formulario web.
       request.files.add(
         http.MultipartFile.fromBytes(
-          'file', // Nombre exacto del campo que espera recibir FastAPI en Python (@app.post("/procesar-factura/"))
+          'file', // Nombre del campo que espera FastAPI en Python
           bytesImagen,
           filename: nombreArchivo.isNotEmpty ? nombreArchivo : 'factura.jpg',
         ),
       );
 
-      // 4. Enviamos la petición streamed al servidor de Python de forma asíncrona.
       var streamedResponse = await request.send();
       var response = await http.Response.fromStream(streamedResponse);
 
-      // 5. Analizamos el código de estado devuelto por el servidor (200 significa éxito total).
       if (response.statusCode == 200) {
-        var jsonRespuesta = jsonDecode(response.body); // Traducimos la respuesta de texto JSON a un mapa de datos de Flutter.
+        var jsonRespuesta = jsonDecode(response.body);
         String mensaje = jsonRespuesta['mensaje'] ?? 'Factura enviada con éxito.';
 
         if (mounted) {
-          // Mostramos una alerta verde de éxito en la pantalla del celular.
           ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(
               content: Text('✅ $mensaje'),
@@ -97,7 +102,6 @@ class _PantallaEscanerOfflineState extends State<PantallaEscanerOffline> {
         }
       } else {
         if (mounted) {
-          // Si el servidor responde con un código de error (ej. 500), avisamos al usuario.
           ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(
               content: Text('⚠️ Error del servidor (${response.statusCode}). Reintente.'),
@@ -107,18 +111,16 @@ class _PantallaEscanerOfflineState extends State<PantallaEscanerOffline> {
         }
       }
     } catch (e) {
-      // Capturamos cualquier error crítico de red (ej. si el celular perdió el Wi-Fi o el PC está apagado).
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text('❌ Error de conexión: $e'),
+            content: Text('❌ Error de conexión con $urlServidorDinamica: $e'),
             backgroundColor: Colors.red,
             duration: const Duration(seconds: 5),
           ),
         );
       }
     } finally {
-      // Bloque que se ejecuta siempre al final (haya éxito o error) para desbloquear la interfaz.
       if (mounted) {
         setState(() {
           _estaEnviando = false;
@@ -128,7 +130,40 @@ class _PantallaEscanerOfflineState extends State<PantallaEscanerOffline> {
   }
 
   // ---------------------------------------------------------------------------
-  // CONSTRUCCIÓN DE LA INTERFAZ VISUAL (UI)
+  // NAVEGACIÓN A LA PANTALLA DE ESCANEO DE CÓDIGO QR
+  // ---------------------------------------------------------------------------
+  void _abrirEscanerQR() async {
+    final resultadoURL = await Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (context) => const PantallaVistaQR(),
+      ),
+    );
+
+    // Si la cámara leyó un texto y regresó una URL válida
+    if (resultadoURL != null && resultadoURL is String && resultadoURL.isNotEmpty) {
+      setState(() {
+        urlServidorDinamica = resultadoURL;
+      });
+
+      // Guardamos la URL de forma permanente en el teléfono
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setString('url_servidor_motoline', resultadoURL);
+
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('🔗 Servidor sincronizado con éxito:\n$resultadoURL'),
+            backgroundColor: Colors.blue,
+            duration: const Duration(seconds: 4),
+          ),
+        );
+      }
+    }
+  }
+
+  // ---------------------------------------------------------------------------
+  // INTERFAZ VISUAL (UI)
   // ---------------------------------------------------------------------------
   @override
   Widget build(BuildContext context) {
@@ -138,14 +173,11 @@ class _PantallaEscanerOfflineState extends State<PantallaEscanerOffline> {
         backgroundColor: Colors.black,
         foregroundColor: Colors.white,
         actions: [
-          // Botón extra en la barra superior para simular la opción de escanear el QR de configuración
+          // Botón del QR en la esquina superior para reconfigurar la conexión en segundos
           IconButton(
-            icon: const Icon(Icons.qr_code_scanner),
+            icon: const Icon(Icons.qr_code_scanner, color: Colors.greenAccent),
             tooltip: 'Escanear QR de Servidor',
-            onPressed: () {
-              // Aquí implementarías la navegación a tu pantalla de lectura de QR
-              // que actualiza la variable 'urlServidorDinamica'.
-            },
+            onPressed: _abrirEscanerQR,
           ),
         ],
       ),
@@ -154,23 +186,30 @@ class _PantallaEscanerOfflineState extends State<PantallaEscanerOffline> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            const Card(
+            Card(
               elevation: 3,
               child: Padding(
-                padding: EdgeInsets.all(16.0),
+                padding: const EdgeInsets.all(16.0),
                 child: Column(
                   children: [
-                    Icon(Icons.cloud_upload, size: 48, color: Colors.blue),
-                    SizedBox(height: 8),
-                    Text(
+                    const Icon(Icons.cloud_upload, size: 48, color: Colors.blue),
+                    const SizedBox(height: 8),
+                    const Text(
                       'Escáner Inteligente en Red Local',
                       style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
                     ),
-                    SizedBox(height: 4),
-                    Text(
-                      'Tome la foto de la factura del proveedor. El servidor procesará los repuestos automáticamente y actualizará el inventario en Excel.',
+                    const SizedBox(height: 4),
+                    const Text(
+                      'Tome la foto de la factura. El servidor procesará los repuestos automáticamente y actualizará el inventario en Excel.',
                       textAlign: TextAlign.center,
                       style: TextStyle(color: Colors.grey),
+                    ),
+                    const SizedBox(height: 12),
+                    // Muestra la URL activa actualmente para que el usuario sepa a dónde se conecta
+                    Text(
+                      'Conectado a:\n$urlServidorDinamica',
+                      textAlign: TextAlign.center,
+                      style: const TextStyle(fontSize: 12, color: Colors.black54, fontWeight: FontWeight.w500),
                     ),
                   ],
                 ),
@@ -178,14 +217,13 @@ class _PantallaEscanerOfflineState extends State<PantallaEscanerOffline> {
             ),
             const Spacer(),
 
-            // Botón principal para tomar foto con la cámara
+            // Botón principal: Cámara
             ElevatedButton.icon(
               style: ElevatedButton.styleFrom(
                 backgroundColor: const Color(0xFFD32F2F),
                 foregroundColor: Colors.white,
                 padding: const EdgeInsets.symmetric(vertical: 16),
               ),
-              // Si _estaEnviando es true, onPressed pasa a ser 'null' (desactivando el botón visualmente).
               onPressed: _estaEnviando ? null : () => _capturarYEnviarFactura(ImageSource.camera),
               icon: const Icon(Icons.camera_alt),
               label: Text(
@@ -195,7 +233,7 @@ class _PantallaEscanerOfflineState extends State<PantallaEscanerOffline> {
             ),
             const SizedBox(height: 12),
 
-            // Botón secundario para seleccionar imagen desde la galería del celular
+            // Botón secundario: Galería
             OutlinedButton.icon(
               style: OutlinedButton.styleFrom(
                 padding: const EdgeInsets.symmetric(vertical: 16),
@@ -210,6 +248,37 @@ class _PantallaEscanerOfflineState extends State<PantallaEscanerOffline> {
             const Spacer(),
           ],
         ),
+      ),
+    );
+  }
+}
+
+// -----------------------------------------------------------------------------
+// PANTALLA AUXILIAR DE ESCANEO DE CÓDIGO QR
+// -----------------------------------------------------------------------------
+class PantallaVistaQR extends StatelessWidget {
+  const PantallaVistaQR({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(
+        title: const Text('Escanee el QR del Servidor'),
+        backgroundColor: Colors.black,
+        foregroundColor: Colors.white,
+      ),
+      body: MobileScanner(
+        onDetect: (capture) {
+          final List<Barcode> barcodes = capture.barcodes;
+          for (final barcode in barcodes) {
+            if (barcode.rawValue != null) {
+              final String codigoLeido = barcode.rawValue!;
+              // Retornamos la URL detectada a la pantalla anterior y cerramos esta vista
+              Navigator.pop(context, codigoLeido);
+              break; // Salimos del ciclo al encontrar el primer QR válido
+            }
+          }
+        },
       ),
     );
   }
