@@ -254,7 +254,7 @@
           }
 
           // -----------------------------------------------------------------------------
-          // PANTALLA AUXILIAR DE ESCANEO DE CÓDIGO QR (Blindada y Optimizada)
+          // PANTALLA AUXILIAR DE ESCANEO DE CÓDIGO QR (Con depuración visual en pantalla)
           // -----------------------------------------------------------------------------
           class PantallaVistaQR extends StatefulWidget {
             const PantallaVistaQR({super.key});
@@ -266,36 +266,20 @@
           class _PantallaVistaQRState extends State<PantallaVistaQR> {
             late MobileScannerController controller;
             bool _encontroQR = false;
-            bool _isInitialized = false;
 
             @override
             void initState() {
               super.initState();
-              // Inicializamos el controlador de la cámara de forma segura
               controller = MobileScannerController(
                 detectionSpeed: DetectionSpeed.normal,
                 facing: CameraFacing.back,
                 torchEnabled: false,
               );
-              _inicializarCamara();
-            }
-
-            Future<void> _inicializarCamara() async {
-              try {
-                await controller.start();
-                if (mounted) {
-                  setState(() {
-                    _isInitialized = true;
-                  });
-                }
-              } catch (e) {
-                print("⚠️ Error al encender la cámara del escáner: $e");
-              }
             }
 
             @override
             void dispose() {
-              controller.dispose(); // Liberamos los recursos de la cámara al cerrar la pantalla
+              controller.dispose();
               super.dispose();
             }
 
@@ -306,42 +290,43 @@
                   title: const Text('Escanee el QR del Servidor'),
                   backgroundColor: Colors.black,
                   foregroundColor: Colors.white,
-                  actions: [
-                    IconButton(
-                      icon: const Icon(Icons.flash_on),
-                      onPressed: () => controller.toggleTorch(),
-                    ),
-                    IconButton(
-                      icon: const Icon(Icons.camera_front),
-                      onPressed: () => controller.switchCamera(),
-                    ),
-                  ],
                 ),
                 body: Stack(
                   children: [
-                    // Mostramos la cámara solo si el controlador arrancó con éxito, de lo contrario un indicador de carga
-                    _isInitialized
-                        ? MobileScanner(
-                            controller: controller,
-                            onDetect: (capture) {
-                              if (_encontroQR) return;
-                              final List<Barcode> barcodes = capture.barcodes;
-                              for (final barcode in barcodes) {
-                                if (barcode.rawValue != null) {
-                                  _encontroQR = true;
-                                  final String codigoLeido = barcode.rawValue!;
-                                  controller.stop();
-                                  Navigator.pop(context, codigoLeido);
-                                  break;
-                                }
-                              }
-                            },
-                          )
-                        : const Center(
-                            child: CircularProgressIndicator(color: Colors.greenAccent),
+                    MobileScanner(
+                      controller: controller,
+                      // 🔍 AQUÍ CAPTURAMOS EL ERROR Y LO MOSTRAMOS EN TEXTO EN VEZ DEL '!'
+                      errorBuilder: (context, error, child) {
+                        return Center(
+                          child: Padding(
+                            padding: const EdgeInsets.all(24.0),
+                            child: Text(
+                              '❌ Error técnico de cámara:\n\nCódigo: ${error.errorCode}\n\nMensaje: ${error.errorDetails?.message ?? error.toString()}',
+                              style: const TextStyle(
+                                color: Colors.redAccent, 
+                                fontSize: 14,
+                                fontWeight: FontWeight.bold,
+                              ),
+                              textAlign: TextAlign.center,
+                            ),
                           ),
-                    
-                    // Cuadro guía visual para enfocar el QR
+                        );
+                      },
+                      onDetect: (capture) {
+                        if (_encontroQR) return;
+                        final List<Barcode> barcodes = capture.barcodes;
+                        for (final barcode in barcodes) {
+                          if (barcode.rawValue != null) {
+                            _encontroQR = true;
+                            final String codigoLeido = barcode.rawValue!;
+                            controller.stop();
+                            Navigator.pop(context, codigoLeido);
+                            break;
+                          }
+                        }
+                      },
+                    ),
+                    // Cuadro guía visual
                     Center(
                       child: Container(
                         width: 260,
@@ -372,4 +357,3 @@
               );
             }
           }
-
