@@ -254,7 +254,7 @@
           }
 
           // -----------------------------------------------------------------------------
-          // PANTALLA AUXILIAR DE ESCANEO DE CÓDIGO QR (Corregida)
+          // PANTALLA AUXILIAR DE ESCANEO DE CÓDIGO QR (Blindada y Optimizada)
           // -----------------------------------------------------------------------------
           class PantallaVistaQR extends StatefulWidget {
             const PantallaVistaQR({super.key});
@@ -266,20 +266,36 @@
           class _PantallaVistaQRState extends State<PantallaVistaQR> {
             late MobileScannerController controller;
             bool _encontroQR = false;
+            bool _isInitialized = false;
 
             @override
             void initState() {
               super.initState();
+              // Inicializamos el controlador de la cámara de forma segura
               controller = MobileScannerController(
                 detectionSpeed: DetectionSpeed.normal,
                 facing: CameraFacing.back,
                 torchEnabled: false,
               );
+              _inicializarCamara();
+            }
+
+            Future<void> _inicializarCamara() async {
+              try {
+                await controller.start();
+                if (mounted) {
+                  setState(() {
+                    _isInitialized = true;
+                  });
+                }
+              } catch (e) {
+                print("⚠️ Error al encender la cámara del escáner: $e");
+              }
             }
 
             @override
             void dispose() {
-              controller.dispose();
+              controller.dispose(); // Liberamos los recursos de la cámara al cerrar la pantalla
               super.dispose();
             }
 
@@ -303,22 +319,29 @@
                 ),
                 body: Stack(
                   children: [
-                    MobileScanner(
-                      controller: controller,
-                      onDetect: (capture) {
-                        if (_encontroQR) return;
-                        final List<Barcode> barcodes = capture.barcodes;
-                        for (final barcode in barcodes) {
-                          if (barcode.rawValue != null) {
-                            _encontroQR = true;
-                            final String codigoLeido = barcode.rawValue!;
-                            controller.stop();
-                            Navigator.pop(context, codigoLeido);
-                            break;
-                          }
-                        }
-                      },
-                    ),
+                    // Mostramos la cámara solo si el controlador arrancó con éxito, de lo contrario un indicador de carga
+                    _isInitialized
+                        ? MobileScanner(
+                            controller: controller,
+                            onDetect: (capture) {
+                              if (_encontroQR) return;
+                              final List<Barcode> barcodes = capture.barcodes;
+                              for (final barcode in barcodes) {
+                                if (barcode.rawValue != null) {
+                                  _encontroQR = true;
+                                  final String codigoLeido = barcode.rawValue!;
+                                  controller.stop();
+                                  Navigator.pop(context, codigoLeido);
+                                  break;
+                                }
+                              }
+                            },
+                          )
+                        : const Center(
+                            child: CircularProgressIndicator(color: Colors.greenAccent),
+                          ),
+                    
+                    // Cuadro guía visual para enfocar el QR
                     Center(
                       child: Container(
                         width: 260,
@@ -349,3 +372,4 @@
               );
             }
           }
+
