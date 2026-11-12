@@ -253,107 +253,51 @@
             }
           }
 
-          // -----------------------------------------------------------------------------
-          // PANTALLA AUXILIAR DE ESCANEO DE CÓDIGO QR (Con depuración visual en pantalla)
-          // -----------------------------------------------------------------------------
-          class PantallaVistaQR extends StatefulWidget {
-            const PantallaVistaQR({super.key});
+         // -----------------------------------------------------------------------------
+         // PANTALLA AUXILIAR DE ESCANEO DE CÓDIGO QR (Ultra Segura)
+         // -----------------------------------------------------------------------------
+         class PantallaVistaQR extends StatefulWidget {
+           const PantallaVistaQR({super.key});
 
-            @override
-            State<PantallaVistaQR> createState() => _PantallaVistaQRState();
-          }
+           @override
+           State<PantallaVistaQR> createState() => _PantallaVistaQRState();
+         }
 
-          class _PantallaVistaQRState extends State<PantallaVistaQR> {
-            late MobileScannerController controller;
-            bool _encontroQR = false;
+         class _PantallaVistaQRState extends State<PantallaVistaQR> {
+           // Usamos MobileScannerController estándar sin forzar arranques manuales pesados
+           final MobileScannerController controller = MobileScannerController();
+           bool _encontroQR = false;
 
-            @override
-            void initState() {
-              super.initState();
-              controller = MobileScannerController(
-                detectionSpeed: DetectionSpeed.normal,
-                facing: CameraFacing.back,
-                torchEnabled: false,
-              );
-            }
+           @override
+           void dispose() {
+             controller.dispose();
+             super.dispose();
+           }
 
-            @override
-            void dispose() {
-              controller.dispose();
-              super.dispose();
-            }
-
-            @override
-            Widget build(BuildContext context) {
-              return Scaffold(
-                appBar: AppBar(
-                  title: const Text('Escanee el QR del Servidor'),
-                  backgroundColor: Colors.black,
-                  foregroundColor: Colors.white,
-                ),
-                body: Stack(
-                  children: [
-                    MobileScanner(
-                      controller: controller,
-                      // 🔍 AQUÍ CAPTURAMOS EL ERROR Y LO MOSTRAMOS EN TEXTO EN VEZ DEL '!'
-                      errorBuilder: (context, error, child) {
-                        return Center(
-                          child: Padding(
-                            padding: const EdgeInsets.all(24.0),
-                            child: Text(
-                              '❌ Error técnico de cámara:\n\nCódigo: ${error.errorCode}\n\nMensaje: ${error.errorDetails?.message ?? error.toString()}',
-                              style: const TextStyle(
-                                color: Colors.redAccent, 
-                                fontSize: 14,
-                                fontWeight: FontWeight.bold,
-                              ),
-                              textAlign: TextAlign.center,
-                            ),
-                          ),
-                        );
-                      },
-                      onDetect: (capture) {
-                        if (_encontroQR) return;
-                        final List<Barcode> barcodes = capture.barcodes;
-                        for (final barcode in barcodes) {
-                          if (barcode.rawValue != null) {
-                            _encontroQR = true;
-                            final String codigoLeido = barcode.rawValue!;
-                            controller.stop();
-                            Navigator.pop(context, codigoLeido);
-                            break;
-                          }
-                        }
-                      },
-                    ),
-                    // Cuadro guía visual
-                    Center(
-                      child: Container(
-                        width: 260,
-                        height: 260,
-                        decoration: BoxDecoration(
-                          border: Border.all(color: Colors.greenAccent, width: 3),
-                          borderRadius: BorderRadius.circular(16),
-                        ),
-                      ),
-                    ),
-                    const Positioned(
-                      bottom: 50,
-                      left: 0,
-                      right: 0,
-                      child: Text(
-                        'Enfoque el código QR que aparece\nen la terminal de la computadora',
-                        textAlign: TextAlign.center,
-                        style: TextStyle(
-                          color: Colors.white,
-                          fontSize: 16,
-                          backgroundColor: Colors.black54,
-                          fontWeight: FontWeight.bold,
-                        ),
-                      ),
-                    ),
-                  ],
-                ),
-              );
-            }
-          }
+           @override
+           Widget build(BuildContext context) {
+             return Scaffold(
+               appBar: AppBar(
+                 title: const Text('Escanee el QR del Servidor'),
+                 backgroundColor: Colors.black,
+                 foregroundColor: Colors.white,
+               ),
+               body: MobileScanner(
+                 controller: controller,
+                 onDetect: (capture) {
+                   if (_encontroQR) return;
+                   final List<Barcode> barcodes = capture.barcodes;
+                   for (final barcode in barcodes) {
+                     if (barcode.rawValue != null) {
+                       _encontroQR = true;
+                       final String codigoLeido = barcode.rawValue!;
+                       controller.stop();
+                       Navigator.pop(context, codigoLeido);
+                       break;
+                     }
+                   }
+                 },
+               ),
+             );
+           }
+         }
